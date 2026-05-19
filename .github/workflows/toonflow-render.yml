@@ -1,0 +1,57 @@
+name: Toonflow Zero-Cost Video Generator
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: 'Text prompt or script (English, Hindi, or Hinglish)'
+        required: true
+        type: string
+      duration:
+        description: 'Target duration in seconds (Leave 0 for auto-calculation based on word count)'
+        required: false
+        default: '0'
+        type: string
+
+jobs:
+  render-video:
+    runs-on: ubuntu-latest
+    # CONSTRAINT: Strict 25-minute timeout to prevent runner penalties
+    timeout-minutes: 25 
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip' # Caches dependencies to save time on free tier
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Secure Credentials Injection
+        # CONSTRAINT: Hardcode no credentials. Generate an ephemeral .env file.
+        run: |
+          echo "TOONFLOW_API_KEY=${{ secrets.TOONFLOW_API_KEY }}" >> .env
+          echo "TOONFLOW_WORKSPACE_ID=${{ secrets.TOONFLOW_WORKSPACE_ID }}" >> .env
+          echo "LOG_LEVEL=INFO" >> .env
+
+      - name: Execute Video Generation Script
+        env:
+          PROMPT: ${{ github.event.inputs.prompt }}
+          TARGET_DURATION: ${{ github.event.inputs.duration }}
+        run: |
+          python src/generate_video.py
+
+      - name: Archive Video Artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: toonflow-rendered-video
+          path: output/*.mp4
+          retention-days: 7 # Auto-delete after 7 days to save storage
